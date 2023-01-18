@@ -1,51 +1,31 @@
-import pickle
 from xmlrpc.client import boolean
+import os
+import sys
+sys.path.append('.')
+
+import argparse
 import mdtraj as md
 import numpy as np
+import open3d as o3d
 import pandas as pd
 import networkx as nx
-import os
-import argparse
 from numba import jit
 from itertools import combinations
-from toolkit import read_file, write_file, setEnv
+from src.leaflet import Leaflet
+from src.toolkit import read_file, write_file, setEnv
+from src.selection import *
 
-class Leaflet():
-    
-    def __init__(self, iFrame, iAgg, location, molIdx, composition=None, nMol=None):
-        
-        self.iFrame = iFrame
-        self.iAgg = iAgg
-        self.location = location
-        self.molIdx = molIdx
-        self.nMol = len(molIdx)
-        
-    def get_composition(self, molType):
-        
-        self.composition = {}
-        mol = molType[self.molIdx]
-        molName = set(molType)
-        for name in molName:
-            self.composition[name] = np.sum(mol == name)
-        self.composition = pd.Series(self.composition)
-                
-        return self.composition
-    
-    def get_output(self):
-        
-        output = str()
-        for idx in self.molIdx:
-            output += str(idx + 1) + ' '
-        print(output)
-        
-        return output
 
 def main():
     
-    topFile, trajFile, trjSkip, allSetsFile, selHeadAtom, selTailAtom, start, stop, skip, distanceCutoff, parallelDegreeCutoff, minLeafletSize, chunkSize, outputPref = parse_args()
+    topFile, trajFile, trjSkip, allSetsFile, selHeadAtom, selTailAtom, \
+            start, stop, skip, distanceCutoff, parallelDegreeCutoff, \
+            minLeafletSize, chunkSize, outputPref = parse_args()
     setEnv(4)
     top = md.load(topFile)
-    molType, headAtomIdx, head_resIdxMatrix, nHeadAtomPerMol, tail_resIdxMatrix, nTailAtomPerMol, selRes = init(top, selHeadAtom, selTailAtom)
+    molType, headAtomIdx, head_resIdxMatrix, nHeadAtomPerMol, \
+            tail_resIdxMatrix, nTailAtomPerMol, selRes \
+            = init(top, selHeadAtom, selTailAtom)
     assert len(headAtomIdx) == top.n_residues
     print('Initialization completed!')
 
@@ -104,15 +84,6 @@ def identify_num(num):
 
     if isinstance(num, str): return int(num)
 
-def get_atom_selection(selAtom):
-
-    atomSelection = dict()
-    for atomGroup in selAtom.split('|'):
-        molName = atomGroup.split(':')[0]
-        atomName = atomGroup.split(':')[1].split()
-        atomSelection[molName] = atomName
-
-    return atomSelection
 
 def init(top, selHeadAtom, selTailAtom):
 
@@ -120,30 +91,13 @@ def init(top, selHeadAtom, selTailAtom):
     selHeadAtom = fix_not_selected_mol(top, selHeadAtom)
     selTailAtom = fix_not_selected_mol(top, selTailAtom)
     headAtomIdx = get_index_of_selected_atom(top, selHeadAtom)
-    head_resIdxMatrix, nHeadAtomPerMol = get_atom_residue_matrix(top, selHeadAtom, molType)
-    tail_resIdxMatrix, nTailAtomPerMol = get_atom_residue_matrix(top, selTailAtom, molType)
+    head_resIdxMatrix, nHeadAtomPerMol \
+        = get_atom_residue_matrix(top, selHeadAtom, molType)
+    tail_resIdxMatrix, nTailAtomPerMol = \
+        get_atom_residue_matrix(top, selTailAtom, molType)
     selRes = get_selected_residue(top, selHeadAtom)
 
     return molType, headAtomIdx, head_resIdxMatrix, nHeadAtomPerMol, tail_resIdxMatrix, nTailAtomPerMol, selRes
-
-def fix_not_selected_mol(top, selAtom):
-
-    for residue in top.top.residues:
-        if not (residue.name in list(selAtom.keys())): selAtom[residue.name] = []
-
-    return selAtom
-
-def get_index_of_selected_atom(trajectory, atomSelection):
-    
-    atomIdx = []
-    for res in trajectory.top.residues:
-        if len(atomSelection[res.name]):
-            for atom in res.atoms_by_name(atomSelection[res.name][0]): 
-                atomIdx.append(atom.index)
-        else:
-            atomIdx.append(np.nan)
-        
-    return np.array(atomIdx)
 
 def cartesian_product(array):
 
@@ -173,16 +127,20 @@ def generate_adjacency_matrix_of_atom_pairs(trajectory, headAtomIdx, allSets, cu
         # Assuming that a molecular cannot transfer from one aggregate to another unless two aggregates fuse
         print('Constructing the adjacency matrix of Frame {}'.format(iFrame))
         if not(iFrame) or (len(allSets[iFrame]) != len(allSets[iFrame - 1])):
-            molPairs = np.concatenate([cartesian_product(agg) for agg in allSets[iFrame]])
+            molPairs = np.concatenate([
+                cartesian_product(agg) for agg in allSets[iFrame]])
             atomPairs = headAtomIdx[molPairs]
-        distances = md.compute_distances(trajectory[iFrame], atomPairs) < cutoff
-        adjMatrix.append(construct_adjacency_matrix(molPairs[distances[0]], len(headAtomIdx)))
+        distances = md.compute_distances(trajectory[iFrame], atomPairs) \
+                    < cutoff
+        adjMatrix.append(
+                construct_adjacency_matrix(molPairs[distances[0]], 
+                                           len(headAtomIdx)))
 
     return adjMatrix
 
-def get_normal_vector_of_every_molecular(trajectory, selRes, head_resIdxMatrix, nHeadAtomPerMol, tail_resIdxMatrix, nTailAtomPerMol, cutoff):
-
-    import open3d as o3d
+def get_normal_vector_of_every_molecular(trajectory, selRes, \
+            head_resIdxMatrix, nHeadAtomPerMol, tail_resIdxMatrix, \
+            nTailAtomPerMol, cutoff):
 
     normalVector = {}
     headPos = head_resIdxMatrix.dot(trajectory.xyz)
@@ -270,9 +228,11 @@ def assign_leaflet_index(assignment, allSets, molType):
 def get_atom_residue_matrix(traj, selAtom, molType):
     
     ref = np.array(range(traj.top.n_atoms))
-    atom_resIdxMatrix = np.array([np.isin(ref, np.array([traj.top.residue(iRes).atom(atomName).index 
-                                                         for atomName in selAtom[molType[iRes]]])) 
-                                  for iRes in range(traj.top.n_residues)])
+    atom_resIdxMatrix = np.array(
+        [np.isin(ref, 
+            np.array([traj.top.residue(iRes).atom(atomName).index 
+                        for atomName in selAtom[molType[iRes]]])) 
+                      for iRes in range(traj.top.n_residues)])
     nAtomPerMol = []
     for molName in molType:
         if len(selAtom[molName]):
@@ -282,15 +242,6 @@ def get_atom_residue_matrix(traj, selAtom, molType):
     nAtomPerMol = np.array(nAtomPerMol)
     
     return atom_resIdxMatrix, nAtomPerMol
-
-def get_selected_residue(top, selAtom):
-
-    selRes = []
-    for iRes, res in enumerate(top.top.residues):
-        if len(selAtom[res.name]) > 0:
-            selRes.append(iRes)    
-    
-    return selRes
 
 @jit(nopython=True)
 def product(v1, v2):
