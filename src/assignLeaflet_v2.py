@@ -6,6 +6,7 @@ sys.path.append('.')
 import argparse
 import mdtraj as md
 import numpy as np
+import cupy as cp
 import open3d as o3d
 import pandas as pd
 import networkx as nx
@@ -187,7 +188,7 @@ def get_normal_vector_of_every_molecular(trajectory, selRes, \
             nTailAtomPerMol, cutoff):
 
     normalVector = {}
-    molecularOrientation, headPos = get_mol_orientation(trajectory.xyz, 
+    molecularOrientation, headPos = get_mol_orientation_CUDA(trajectory.xyz, 
             head_resIdxMatrix, tail_resIdxMatrix, 
             nHeadAtomPerMol, nTailAtomPerMol)
     for iFrame in range(len(trajectory)):
@@ -206,6 +207,8 @@ def get_normal_vector_of_every_molecular(trajectory, selRes, \
 
 def get_mol_orientation(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerMol, nTailAtomPerMol):
 
+
+    print('Now getting the molecular orientation.')
     headPos = np.array([dot_jit(np.float32(head_resIdxMatrix), frame) for frame in xyz])
     headPos = np.array([hadamard_product(frame, nHeadAtomPerMol) for frame in headPos])
     tailPos = np.array([dot_jit(np.float32(tail_resIdxMatrix), frame) for frame in xyz])
@@ -213,6 +216,22 @@ def get_mol_orientation(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerM
     molecularOrientation = tailPos - headPos
 
     return molecularOrientation, headPos
+
+def get_mol_orientation_CUDA(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerMol, nTailAtomPerMol):
+
+
+    xyz = cp.array(xyz)
+    head_resIdxMatrix = cp.array(head_resIdxMatrix)
+    tail_resIdxMatrix = cp.array(tail_resIdxMatrix)
+    nHeadAtomPerMol = cp.array(nHeadAtomPerMol)
+    nTailAtomPerMol = cp.array(nTailAtomPerMol)
+    headPos = cp.dot(head_resIdxMatrix, xyz).transpose((1, 0, 2))
+    headPos = cp.multiply(headPos, nHeadAtomPerMol)
+    tailPos = cp.dot(tail_resIdxMatrix, xyz).transpose((1, 0, 2))
+    tailPos = cp.multiply(tailPos, nTailAtomPerMol)
+    molecularOrientation = cp.subtract(tailPos, headPos)
+
+    return cp.asnumpy(molecularOrientation), cp.asnumpy(headPos)
 
 def assign_leaflet(aggGraph, normalVector, degreeCutoff, minLeafletSize):
     
