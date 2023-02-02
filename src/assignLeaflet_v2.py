@@ -41,7 +41,7 @@ def main():
 
     nChunk = int(nFrames / chunkSize)
     leafIdx = []
-    for iChunk, chunk in track(enumerate(md.iterload(trajFile, chunk=chunkSize, top=top, skip=start))):
+    for iChunk, chunk in track(enumerate(md.iterload(trajFile, chunk=chunkSize, top=top, skip=start)), total=nChunk):
         if iChunk > nChunk:
             break
         else:
@@ -111,7 +111,8 @@ def init(top, selHeadAtom, selTailAtom):
         get_atom_residue_matrix(top, selTailAtom, molType)
     selRes = get_selected_residue(top, selHeadAtom)
 
-    return molType, headAtomIdx, head_resIdxMatrix, nHeadAtomPerMol, tail_resIdxMatrix, nTailAtomPerMol, selRes
+    return molType, headAtomIdx, cp.array(head_resIdxMatrix), cp.array(nHeadAtomPerMol), \
+           cp.array(tail_resIdxMatrix), cp.array(nTailAtomPerMol), selRes
 
 def cartesian_product(array):
 
@@ -219,12 +220,8 @@ def get_mol_orientation(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerM
 
 def get_mol_orientation_CUDA(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerMol, nTailAtomPerMol):
 
-
+    print('Now getting the molecular orientation.')
     xyz = cp.array(xyz)
-    head_resIdxMatrix = cp.array(head_resIdxMatrix)
-    tail_resIdxMatrix = cp.array(tail_resIdxMatrix)
-    nHeadAtomPerMol = cp.array(nHeadAtomPerMol)
-    nTailAtomPerMol = cp.array(nTailAtomPerMol)
     headPos = cp.dot(head_resIdxMatrix, xyz).transpose((1, 0, 2))
     headPos = cp.multiply(headPos, nHeadAtomPerMol)
     tailPos = cp.dot(tail_resIdxMatrix, xyz).transpose((1, 0, 2))
