@@ -28,9 +28,8 @@ class Leaflet():
         for idx in self.molIdx:
             output += str(idx + 1) + ' '
         print(output)
-        
-        return output
 
     def add_new_mol(self, molIdx):
 
         self.molIdx = np.concatenate([self.molIdx, molIdx])
+        self.nMol += len(molIdx)
