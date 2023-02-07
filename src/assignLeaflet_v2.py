@@ -1,7 +1,6 @@
 from xmlrpc.client import boolean
 import os
 import sys
-sys.path.append('.')
 
 import argparse
 import mdtraj as md
