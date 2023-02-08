@@ -95,9 +95,9 @@ class PBCRemover():
         # From GROMACS Manual 2023 rc1 Equation 5.19
 
         r = position - boxCenter
-        r -= a * torch.round(r[::, 2] / boxXYZ[2]).unsqueeze(0).T
+        r -= c * torch.round(r[::, 2] / boxXYZ[2]).unsqueeze(0).T
         r -= b * torch.round(r[::, 1] / boxXYZ[1]).unsqueeze(0).T
-        r -= c * torch.round(r[::, 0] / boxXYZ[0]).unsqueeze(0).T
+        r -= a * torch.round(r[::, 0] / boxXYZ[0]).unsqueeze(0).T
 
         return r
 
