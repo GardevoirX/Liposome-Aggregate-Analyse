@@ -4,7 +4,7 @@ import numpy as np
 import mdtraj as md
 from rich.progress import track
 from src.define import *
-from src.toolkit import read_file, write_file
+from src.io import read_file, write_file
 from src.selection import *
 
 class Analyzer():

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pickle
 
 class XVGReader():
     
@@ -38,3 +39,15 @@ class XVGReader():
             self.data[self.legend[key]] = np.array(tempData[i+1], dtype=float)
             
         return self.data
+
+def write_file(data, fileName):
+    
+    with open(fileName, 'wb') as wfl:
+        pickle.dump(data, wfl)
+    
+    return
+
+def read_file(fileName):
+    
+    with open(fileName, 'rb') as rfl:
+        return pickle.load(rfl)

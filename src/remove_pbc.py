@@ -1,24 +1,23 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
 import MDAnalysis as mda
 import numpy as np
-import argparse
 import torch
 from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from rich.progress import track
+import sys
+sys.path.append('/share/home/qjxu/scripts/aggregate_analyse')
 from src.toolkit import setEnv
 
 class PBCRemover():
 
-    def __init__(self, fileName, topFile, ndxFile, box, outputFileName):
+    def __init__(self, fileName, topFile, ndxFile, outputFileName):
 
         setEnv(4)
+        assert fileName != outputFileName, 'Your output file name is the name of your input trajectory!'
         self.fileName = fileName
         self.topFile = topFile
         self.ndxFile = ndxFile
         self.selectedIdx = self.read_ndx()
-        self.box = box
         self.outputFileName = outputFileName
         self.u = mda.Universe(self.topFile, self.fileName, in_memory=True)
         self.selectedAtomIdx = self.u.residues[self.selectedIdx].atoms.indices
@@ -123,63 +122,3 @@ class PBCRemover():
             r = PBCRemover.get_position_vector(PBCRemover, position, boxCenter, boxXYZ, a, b, c)
 
             return self.multiplier * torch.dist(r, origin)
-
-
-
-def main():
-
-    fileName = '/share/home/qjxu/data/plasma@martini/sym/Traj-0/mol.gro'
-    ndxFile = '/share/home/qjxu/data/plasma@martini/agg_set'
-    box = 'dodecahedron'
-    with open(ndxFile, 'r') as rfl:
-        idx = rfl.readlines()[-1]
-        selectedIdx = []
-        selectedIdx = np.array(idx.split(), dtype=int)
-    u = mda.Universe(fileName)
-    atomPosition = torch.tensor(u.residues[selectedIdx].atoms.positions, dtype=float)
-    allAtomPosition = torch.tensor(u.atoms.positions, dtype=float)
-    boxXYZ = torch.tensor(u.dimensions[:3], dtype=float)
-    if box == 'dodecahedron':
-        pbcXYBias = torch.tensor([-boxXYZ[-1] / 2, -boxXYZ[-1] / 2, 0.])
-        boxXYZ[-1] *= 2 ** (0.5) / 2
-    a = torch.tensor([boxXYZ[0], 0, 0])
-    b = torch.tensor([0, boxXYZ[1], 0])
-    c = torch.tensor([0.5 * boxXYZ[2], 0.5 * boxXYZ[2], 2 ** (0.5) / 2 * boxXYZ[2]])
-    boxCenter = boxXYZ / 2
-    bias = torch.rand(3, requires_grad=True)
-    loss = nn.MSELoss()
-    trainer = torch.optim.SGD([bias], lr=0.1)
-    scheduler = CosineAnnealingLR(trainer, 10)
-    num_epochs = 40
-    for epoch in range(num_epochs):
-        l = 5*torch.dist(get_object(recover_object(atomPosition + bias, a, b, c, boxXYZ), a, b, c, boxXYZ, boxCenter), torch.zeros(3, dtype=float)) #+ sum(torch.square(bias))
-        trainer.zero_grad()
-        l.backward()
-        trainer.step()
-        scheduler.step()
-        print(f'loss: {l.detach().numpy():.2f}    bias: {bias}')
-    u.trajectory[0]._pos = recover_object(allAtomPosition + bias, a, b, c, boxXYZ).detach().numpy()
-    with mda.Writer('agg.gro', u.trajectory[0].n_atoms) as W:
-        W.write(u)
-
-    return
-
-def recover_object(xyz, a, b, c, boxXYZ):
-    
-    xyz -= torch.floor(xyz[::, 2] / boxXYZ[2]).unsqueeze(0).T * c
-    xyz -= torch.floor(xyz[::, 1] / boxXYZ[1]).unsqueeze(0).T * b
-    xyz -= torch.floor(xyz[::, 0] / boxXYZ[0]).unsqueeze(0).T * a
-    
-    return xyz
-
-def get_object(xyz, a, b, c, boxXYZ, boxCenter):
-    
-    r = xyz - boxCenter
-    r -= c * torch.round(r[2] / boxXYZ[2])
-    r -= b * torch.round(r[1] / boxXYZ[1])
-    r -= a * torch.round(r[0] / boxXYZ[0])
-    
-    return r
-
-if __name__ == '__main__':
-    main()
