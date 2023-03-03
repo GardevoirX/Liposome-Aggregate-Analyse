@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from numba import jit
 import MDAnalysis as mda
+from MDAnalysis.analysis import distances
 from rich.progress import track
 import sys
 sys.path.append('/share/home/qjxu/scripts/aggregate_analyse')
@@ -41,10 +42,41 @@ class Featurizer():
         self.feature['$\\lambda_3^2$'] = lCollection[::, 2]
 
         return apCollection, lCollection
+    
+    def calculate_distance_matrix(self, selIdx):
+
+        '''
+        Compute the self-pairwise distance of selected atoms
+        
+        selIdx: the index of the selected atom
+        '''
+
+        distMatrixs = []
+        nAtom = len(selIdx)
+        for frame in self.u.trajectory:
+            distance = distances.self_distance_array(frame.positions[selIdx])
+
+
+        return distMatrixs
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _transform_to_matrix(distance, nAtom):
+
+        distMatrix = np.full((nAtom, nAtom), 0.)
+        iLBound = 0
+        nPairs = nAtom - 1 # for atom 0, there are nAtom - 1 pairs
+        for iAtom in range(nAtom):
+            distMatrix[iAtom, iAtom + 1:] = distance[iLBound:iLBound + nPairs]
+            distMatrix[iAtom + 1:, iAtom] = distance[iLBound:iLBound + nPairs]
+            iLBound += nPairs
+            nPairs -= 1 # for atom i, there are nAtom - i - 1 pairs
+
+        return distMatrix
 
     @staticmethod
     @jit(nopython=True, fastmath=True)
-    def __compute_rg_tensor(nAtoms, atomPos, comPos):
+    def _compute_rg_tensor(nAtoms, atomPos, comPos):
 
         r = atomPos - comPos
 
