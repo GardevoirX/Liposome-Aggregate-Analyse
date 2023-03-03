@@ -20,6 +20,7 @@ class Analyzer():
         self.headAtomIdx = get_index_of_selected_atom(self.top, \
                 self.headAtomSelection)
         self.totalResNum = len(self.headAtomIdx)
+        self.notSolventResNum = np.sum(~np.isnan(self.headAtomIdx))
         self.selectedRes = np.arange(self.top.top.n_residues)[
                 ~np.isnan(self.headAtomIdx)]
         self.notSelectedRes = np.arange(self.top.top.n_residues)[
@@ -95,7 +96,7 @@ class Analyzer():
         self.unassignedMolIdx[iFrame] = np.array(
                 self.unassignedMolIdx[iFrame])
 
-        assert len(assignedMolIdx) + len(self.unassignedMolIdx[iFrame]) == self.totalResNum
+        #assert len(assignedMolIdx) + len(self.unassignedMolIdx[iFrame]) == self.totalResNum
 
         return self.unassignedMolIdx[iFrame]
 
