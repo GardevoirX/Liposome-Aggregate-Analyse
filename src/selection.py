@@ -1,4 +1,5 @@
 import numpy as np
+from src.define import RESEXCLUDED
 
 def get_atom_selection(selAtom):
 
@@ -12,23 +13,27 @@ def get_atom_selection(selAtom):
 
 def fix_not_selected_mol(top, selAtom):
 
-    for residue in top.top.residues:
-        if not (residue.name in list(selAtom.keys())): selAtom[residue.name] = []
+    for res in top.top.residues:
+        if not (res.name in list(selAtom.keys())) and not (res.name in RESEXCLUDED): 
+            selAtom[res.name] = []
 
     return selAtom
 
-def get_index_of_selected_atom(top, atomSelection):
+def get_index_of_selected_atom(top, atomSelection, fillUnselected=False):
 
     # Only the first atom in the selection command 
     # will be selected in this function.
     
     atomIdx = []
     for res in top.top.residues:
-        if len(atomSelection[res.name]):
+        if not (res.name in RESEXCLUDED) and len(atomSelection[res.name]):
             for atom in res.atoms_by_name(atomSelection[res.name][0]): 
                 atomIdx.append(atom.index)
         else:
-            atomIdx.append(np.nan)
+            if fillUnselected:
+                atomIdx.append(res.atom(0).index)
+            else:
+                atomIdx.append(np.nan)
         
     return np.array(atomIdx)
 
