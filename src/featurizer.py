@@ -18,8 +18,6 @@ class Featurizer():
         self.nAtoms : int = len(self.u.atoms)
         self.feature = pd.DataFrame()
 
-        pass
-
     def compute_asphericity_parameter(self, comFile):
 
         com = XVGReader(comFile).read()
@@ -55,7 +53,7 @@ class Featurizer():
         nAtom = len(selIdx)
         for frame in self.u.trajectory:
             distance = distances.self_distance_array(frame.positions[selIdx])
-
+            distMatrixs.append(self._transform_to_matrix(distance, nAtom))
 
         return distMatrixs
     
