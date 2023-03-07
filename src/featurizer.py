@@ -4,9 +4,8 @@ from numba import jit
 import MDAnalysis as mda
 from MDAnalysis.analysis import distances
 from rich.progress import track
-import sys
-sys.path.append('/share/home/qjxu/scripts/aggregate_analyse')
 from src.io import XVGReader
+from src.define import NAME2TYPE
 
 class Featurizer():
 
@@ -17,6 +16,7 @@ class Featurizer():
         self.u = mda.Universe(topFile, trjFile)
         self.nAtoms : int = len(self.u.atoms)
         self.feature = pd.DataFrame()
+        self._get_lipid_type()
 
     def compute_asphericity_parameter(self, comFile):
 
@@ -41,7 +41,7 @@ class Featurizer():
 
         return apCollection, lCollection
     
-    def calculate_distance_matrix(self, selIdx):
+    def calculate_distance_matrix(self, iFrame, selIdx):
 
         '''
         Compute the self-pairwise distance of selected atoms
@@ -49,19 +49,33 @@ class Featurizer():
         selIdx: the index of the selected atom
         '''
 
-        distMatrixs = []
         nAtom = len(selIdx)
-        for frame in self.u.trajectory:
-            distance = distances.self_distance_array(frame.positions[selIdx])
-            distMatrixs.append(self._transform_to_matrix(distance, nAtom))
+        frame = self.u.trajectory[iFrame]
+        distance = distances.self_distance_array(frame.positions[selIdx])
+        distMatrix = self._transform_to_matrix(distance, nAtom)
 
-        return distMatrixs
+        return distMatrix
+    
+    def _get_lipid_type(self):
+
+        molType = []
+        for res in self.u.residues:
+            molType.append(NAME2TYPE[res.resname])
+        molType = np.array(molType)
+
+        molGroup = {}
+        allTypes = set(molType)
+        for type_ in allTypes:
+            molGroup[type_] = np.argwhere(molType == type_)
+
+        self.molType = molType
+        self.molGroup = molGroup
     
     @staticmethod
     @jit(nopython=True)
     def _transform_to_matrix(distance, nAtom):
 
-        distMatrix = np.full((nAtom, nAtom), 0.)
+        distMatrix = np.full((nAtom, nAtom), np.nan)
         iLBound = 0
         nPairs = nAtom - 1 # for atom 0, there are nAtom - 1 pairs
         for iAtom in range(nAtom):
