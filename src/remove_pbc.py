@@ -17,7 +17,7 @@ class PBCRemover():
         self.fileName = fileName
         self.topFile = topFile
         self.ndxFile = ndxFile
-        self.selectedIdx = self.read_ndx()
+        self.selectedIdx = self._read_ndx()
         self.outputFileName = outputFileName
         self.u = mda.Universe(self.topFile, self.fileName, in_memory=True)
         self.selectedAtomIdx = self.u.residues[self.selectedIdx].atoms.indices
@@ -35,7 +35,7 @@ class PBCRemover():
         for iFrame in track(range(self.trajLen)):
             iRound = 0
             lastLoss = 0
-            self.boxXYZ, (self.a, self.b, self.c), self.boxCenter = self.get_box_info(iFrame)
+            self.boxXYZ, (self.a, self.b, self.c), self.boxCenter = self._get_box_info(iFrame)
             allAtomPosition = torch.clone(torch.tensor(self.u.trajectory[iFrame].positions, dtype=float))
             selectedAtomPosition = allAtomPosition[self.selectedAtomIdx]
             while iRound < MAXITER:
@@ -48,8 +48,8 @@ class PBCRemover():
                 if abs(l - lastLoss) < CONVERGE:
                     break
                 lastLoss = l
-            self.update_position(
-                    self.move_to_unit_cell(
+            self._update_position(
+                    self._move_to_unit_cell(
                             allAtomPosition + bias, self.boxXYZ,
                             self.a, self.b, self.c).detach().numpy()
                     )(self.u.trajectory[iFrame])
@@ -60,7 +60,7 @@ class PBCRemover():
 
         return
 
-    def get_box_info(self, iFrame):
+    def _get_box_info(self, iFrame):
 
         boxXYZ = torch.tensor([self.u.trajectory[iFrame].triclinic_dimensions[i, i] for i in range(3)])
         a = torch.tensor(self.u.trajectory[iFrame].triclinic_dimensions[0])
@@ -70,7 +70,7 @@ class PBCRemover():
         
         return boxXYZ, (a, b, c), boxCenter
 
-    def read_ndx(self):
+    def _read_ndx(self):
 
         with open(self.ndxFile, 'r') as rfl:
             idx = rfl.readlines()[-1]
@@ -79,7 +79,7 @@ class PBCRemover():
 
         return selectedIdx
 
-    def move_to_unit_cell(self, position, boxXYZ, a, b, c):
+    def _move_to_unit_cell(self, position, boxXYZ, a, b, c):
 
         # Based on GROMACS Manual 2023 rc1 Equation 5.19
 
@@ -89,7 +89,7 @@ class PBCRemover():
 
         return position
 
-    def get_position_vector(self, position, boxCenter, boxXYZ, a, b, c):
+    def _get_position_vector(self, position, boxCenter, boxXYZ, a, b, c):
 
         # From GROMACS Manual 2023 rc1 Equation 5.19
 
@@ -100,7 +100,7 @@ class PBCRemover():
 
         return r
 
-    def update_position(self, position):
+    def _update_position(self, position):
 
         def wrapped(ts):
             ts.positions = position
@@ -118,7 +118,7 @@ class PBCRemover():
         def forward(self, position, boxXYZ, boxCenter, a, b, c):
 
             origin = torch.zeros(3, dtype=float)
-            position = PBCRemover.move_to_unit_cell(PBCRemover, position, boxXYZ, a, b, c)
-            r = PBCRemover.get_position_vector(PBCRemover, position, boxCenter, boxXYZ, a, b, c)
+            position = PBCRemover._move_to_unit_cell(PBCRemover, position, boxXYZ, a, b, c)
+            r = PBCRemover._get_position_vector(PBCRemover, position, boxCenter, boxXYZ, a, b, c)
 
             return self.multiplier * torch.dist(r, origin)
