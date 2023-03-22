@@ -1,4 +1,5 @@
 import numpy as np
+from MDAnalysis import Universe
 from src.define import RESEXCLUDED
 
 def get_atom_selection(selAtom):
@@ -13,6 +14,10 @@ def get_atom_selection(selAtom):
 
 def fix_not_selected_mol(top, selAtom):
 
+    if isinstance(top, Universe):
+        for res in top.residues:
+            if not (res.resname in list(selAtom.keys())) and not (res.resname in RESEXCLUDED): 
+                selAtom[res.resname] = []
     for res in top.top.residues:
         if not (res.name in list(selAtom.keys())) and not (res.name in RESEXCLUDED): 
             selAtom[res.name] = []
