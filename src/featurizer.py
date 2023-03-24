@@ -1,9 +1,13 @@
 import numpy as np
 import pandas as pd
+import networkx as nx
 from numba import jit
 import MDAnalysis as mda
 from MDAnalysis.analysis import distances
+from scipy.sparse.linalg import eigs
+from scipy.sparse.lil import lil_matrix
 from rich.progress import track
+
 from src.io import XVGReader
 from src.define import NAME2TYPE
 
@@ -14,6 +18,7 @@ class Featurizer():
         self.topFile = topFile
         self.trjFile = trjFile
         self.u = mda.Universe(topFile, trjFile)
+        self.trjLen = len(self.u.trajectory)
         self.nAtoms : int = len(self.u.atoms)
         self.feature = pd.DataFrame()
         self._get_lipid_type()
@@ -24,7 +29,7 @@ class Featurizer():
         apCollection = np.array([], dtype=float)
         lCollection = []
 
-        for iFrame in track(range(len(self.u.trajectory))):
+        for iFrame in track(range(self.trjLen)):
             comPos = com.iloc[iFrame].values[1:] * 10
             atomPos = self.u.trajectory[iFrame]._pos
             A = self.__compute_rg_tensor(self.nAtoms, atomPos, comPos)
@@ -55,6 +60,51 @@ class Featurizer():
         distMatrix = self._transform_to_matrix(distance, nAtom)
 
         return distMatrix
+    
+    def calculate_contact_matrix(self, iFrame, selIdx):
+
+        '''
+        Compute the contact matrix of selected atoms
+        
+        selIdx: the index of the selected atom
+        '''
+
+        frame = self.u.trajectory[iFrame]
+
+        return distances.contact_matrix(frame.positions[selIdx],
+                                        returntype='sparse')
+    
+    # TODO: add support for the situtation where contact matrix is not stored
+
+    def calculate_Laplacian_eigenvalue(self, contactMatrix, selIdx, cutoff=1e-8):
+
+        if isinstance(contactMatrix, lil_matrix):
+            contactMatrix = contactMatrix.toarray()
+
+        mask = np.full(contactMatrix.shape[0], False)
+        mask[selIdx] = True
+        G = nx.from_numpy_matrix(contactMatrix[mask][::, mask])
+        l = nx.laplacian_matrix(G)
+        while True:
+            eigVal, _ = eigs(l.asfptype(), k=10, which='SM')
+            eigValReal = np.array([val.real for val in eigVal])
+            if np.sum(eigValReal > cutoff) > 0:
+                break
+
+        return np.sort(eigValReal[eigValReal > cutoff])[0]
+    
+    def calculate_average_lipid_number(self, contactMatrix, mainIdx, surroundingIdx):
+
+        if isinstance(contactMatrix, lil_matrix):
+            contactMatrix = contactMatrix.toarray()
+
+        mainMask = np.full(contactMatrix.shape[0], False)
+        mainMask[mainIdx] = True
+        surroundingMask = np.full(contactMatrix.shape[0], False)
+        surroundingMask[surroundingIdx] = True
+        lipidNumber = np.sum(contactMatrix[mainMask][::, surroundingMask], axis=1)
+
+        return np.average(lipidNumber)
     
     def _get_lipid_type(self):
 
