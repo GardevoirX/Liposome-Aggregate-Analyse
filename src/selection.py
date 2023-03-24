@@ -18,9 +18,10 @@ def fix_not_selected_mol(top, selAtom):
         for res in top.residues:
             if not (res.resname in list(selAtom.keys())) and not (res.resname in RESEXCLUDED): 
                 selAtom[res.resname] = []
-    for res in top.top.residues:
-        if not (res.name in list(selAtom.keys())) and not (res.name in RESEXCLUDED): 
-            selAtom[res.name] = []
+    else:
+        for res in top.top.residues:
+            if not (res.name in list(selAtom.keys())) and not (res.name in RESEXCLUDED): 
+                selAtom[res.name] = []
 
     return selAtom
 
@@ -30,23 +31,40 @@ def get_index_of_selected_atom(top, atomSelection, fillUnselected=False):
     # will be selected in this function.
     
     atomIdx = []
-    for res in top.top.residues:
-        if not (res.name in RESEXCLUDED) and len(atomSelection[res.name]):
-            for atom in res.atoms_by_name(atomSelection[res.name][0]): 
-                atomIdx.append(atom.index)
-        else:
-            if fillUnselected:
-                atomIdx.append(res.atom(0).index)
+    if isinstance(top, Universe):
+        for res in top.residues:
+            if not (res.resname in RESEXCLUDED) and len(atomSelection[res.resname]):
+                for atom in res.atoms: 
+                    if atom.name == atomSelection[res.resname][0]:
+                        atomIdx.append(atom.index)
             else:
-                atomIdx.append(np.nan)
+                if fillUnselected and not (res.resname in RESEXCLUDED):
+                    atomIdx.append(res.atoms[0].index)
+                else:
+                    atomIdx.append(np.nan)
+    else:
+        for res in top.top.residues:
+            if not (res.name in RESEXCLUDED) and len(atomSelection[res.name]):
+                for atom in res.atoms_by_name(atomSelection[res.name][0]): 
+                    atomIdx.append(atom.index)
+            else:
+                if fillUnselected and not (res.resname in RESEXCLUDED):
+                    atomIdx.append(res.atom(0).index)
+                else:
+                    atomIdx.append(np.nan)
         
     return np.array(atomIdx)
 
 def get_selected_residue(top, selAtom):
 
     selRes = []
-    for iRes, res in enumerate(top.top.residues):
-        if len(selAtom[res.name]) > 0:
-            selRes.append(iRes)    
+    if isinstance(top, Universe):
+        for iRes, res in enumerate(top.residues):
+            if len(selAtom[res.resname]) > 0:
+                selRes.append(iRes) 
+    else:
+        for iRes, res in enumerate(top.top.residues):
+            if len(selAtom[res.name]) > 0:
+                selRes.append(iRes)    
     
     return selRes
