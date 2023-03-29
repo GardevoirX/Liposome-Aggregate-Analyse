@@ -32,6 +32,7 @@ class LeafletAssigner():
         self.topFile = topFile
         self.trajFile = trajFile
         self.top = mda.Universe(topFile, trajFile)
+        self.nRes = len(self.top.residues)
         self.traj = self.top.trajectory
         self.trajLen = len(self.traj)
         self.selHeadAtom = get_atom_selection(selHeadAtom)
@@ -39,11 +40,11 @@ class LeafletAssigner():
         self._prepare_info(self.top, self.selHeadAtom, self.selTailAtom)
         self.start = start if start is not None else 0
         self.stop = stop if stop is not None else self.trajLen
-        self.skip = skip if stop is not None else 1
+        self.skip = skip if skip is not None else 1
         self.allSetsFile = allSetsFile
         self.allSets = self._read_allSets(allSetsFile, self.start, self.stop, self.skip, trjSkip) \
                 if isinstance(self.allSetsFile, str) \
-                else self._generate_allSets(self.selRes, self.start, self.stop)
+                else self._generate_allSets(self.selRes, self.start, self.stop, self.skip, trjSkip)
         self.nFrames = len(self.allSets)
         self.trjSkip = trjSkip
         self.distanceCutoff = distanceCutoff
@@ -85,7 +86,7 @@ class LeafletAssigner():
 
             # TODO: optimize for many aggregates situtation
             pairDistances = [self_distance_array(
-                self.traj[iFrame].positions[self.headAtomIdx[agg]])
+                self.trajToAnalysis[iFrame].positions[self.headAtomIdx[agg]])
                 for agg in self.allSets[iFrame]]
             dist.append(np.concatenate(pairDistances))
             selectedPairs = np.concatenate(pairDistances) \
@@ -93,31 +94,35 @@ class LeafletAssigner():
             aggGraph.append(
                 self._generate_contact_graph(
                     molPairs[selectedPairs], nSelectedMol))
-        write_file(dist, 'dist_assigned.pickle')
 
         return aggGraph
     
     def get_normal_vector_of_every_molecular(self, start, stop):
 
-        normalVector = {}
-        subTraj = np.array([np.copy(self.traj[iFrame].positions)
+        normalVector = np.zeros((stop - start, self.nRes, 3))
+        subTraj = np.array([np.copy(self.trajToAnalysis[iFrame].positions)
                             for iFrame in range(start, stop)])
         molecularOrientation, headPos = self._get_mol_orientation_CUDA(subTraj, 
                 self.head_resIdxMatrix, self.tail_resIdxMatrix, 
                 self.nHeadAtomPerMol, self.nTailAtomPerMol)
         for iFrame in range(start, stop):
             #print('Computing the normal vector of Frame {}'.format(iFrame))
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(headPos[iFrame - start])
-            pcd.estimate_normals(search_param=
-                    o3d.geometry.KDTreeSearchParamHybrid(radius=self.distanceCutoff, max_nn=40))
-            pcd.normalize_normals()
-            normals = np.asarray(pcd.normals)
-            toConvert = np.argwhere((self._product(molecularOrientation[iFrame - start], normals)) < 0)
+            normals = self._calculate_normal_vector_from_cloud_point(headPos[iFrame - start][self.selRes])
+            toConvert = np.argwhere((self._product(molecularOrientation[iFrame - start][self.selRes], normals)) < 0)
             normals[toConvert] = -normals[toConvert] 
-            normalVector[iFrame - start] = normals
+            normalVector[iFrame - start][self.selRes] = normals
 
-        return normalVector
+        return normalVector, headPos
+    
+    def _calculate_normal_vector_from_cloud_point(self, position):
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(position)
+        pcd.estimate_normals(search_param=
+                o3d.geometry.KDTreeSearchParamHybrid(radius=self.distanceCutoff, max_nn=40))
+        pcd.normalize_normals()
+
+        return np.asarray(pcd.normals)
     
     def assign_leaflet(self, aggGraph, normalVector):
         
@@ -165,6 +170,7 @@ class LeafletAssigner():
         tail_resIdxMatrix, nTailAtomPerMol \
                 = self._get_atom_residue_matrix(top, selTailAtom, self.molType)
         self.selRes = get_selected_residue(top, selHeadAtom)
+        self.nSelRes = len(self.selRes)
         self.head_resIdxMatrix, self.nHeadAtomPerMol, \
         self.tail_resIdxMatrix, self.nTailAtomPerMol \
                 = cp.array(head_resIdxMatrix), cp.array(nHeadAtomPerMol), \
@@ -227,10 +233,11 @@ class LeafletAssigner():
         return allSets
 
     @staticmethod
-    def _generate_allSets(selRes, start, stop):
+    def _generate_allSets(selRes, start, stop, skip, trjSkip):
 
+        # TODO: adapt for trjSkip != 1
         selRes = np.array(selRes)
-        allSets = np.array([[selRes] for _ in range(start, stop)])
+        allSets = np.array([[selRes] for _ in range(start, stop)])[::skip]
 
         return allSets
     
@@ -261,7 +268,6 @@ class LeafletAssigner():
     def _get_mol_orientation_CUDA(xyz, head_resIdxMatrix, tail_resIdxMatrix, nHeadAtomPerMol, nTailAtomPerMol):
 
         #print('Now getting the molecular orientation.')
-        write_file(xyz, 'xyz_agg.pickle')
         xyz = cp.array(xyz)
         headPos = cp.dot(head_resIdxMatrix, xyz).transpose((1, 0, 2))
         headPos = cp.multiply(headPos, nHeadAtomPerMol)
