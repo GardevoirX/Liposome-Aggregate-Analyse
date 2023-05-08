@@ -8,6 +8,7 @@ import MDAnalysis as mda
 from MDAnalysis.analysis import distances
 from scipy.sparse.linalg import eigs
 from scipy.sparse.lil import lil_matrix
+from scipy.sparse.csgraph import laplacian
 from rich.progress import track
 
 from src.io import XVGReader
@@ -42,7 +43,7 @@ class Featurizer():
         elif selection in self.molType:
             return np.concatenate(np.argwhere(self.idx2type == selection))
 
-    def plot_radius_distribution(self, molName: str, iFrame: int, return_df=False, **kwargs):
+    def plot_radius_distribution(self, molName: str, iFrame: int, returnDF=False, **kwargs):
 
         '''
         Plot the radius distribution of a certain kind of molecule
@@ -77,28 +78,39 @@ class Featurizer():
         os.makedirs(f'temp_fig/distribution/Traj-{iTraj}', exist_ok=True)
         plt.savefig(f'temp_fig/distribution/Traj-{iTraj}/{mol}.png', transparent=False)'''
 
-        if return_df:
+        if returnDF:
             return fig, ax, dfPos
         else:
             return fig, ax
         
-    def plot_mass_center_radius_distribution(self, iFrame: int, nMolCutoff: int = 0):
+    def plot_mass_center_radius_distribution(self, iFrame: int, nMolCutoff: int = 0, noPlot=False):
 
         pos = np.copy(self.u.trajectory[iFrame].positions)
         com = np.average(pos, axis=0)
         pos -= com
         radius = np.linalg.norm(pos, axis=1)
 
-        fig, ax = plt.subplots()
+        if not noPlot:
+            fig, ax = plt.subplots()
+        legends = []
+        df = {}
         for molName in self.molName:
             molIdx = self.select_mol(molName)
             if len(molIdx) < nMolCutoff: continue
+            legends.append(molName)
             idxMatrix = []
             for i in molIdx:
                 idxMatrix.append(self.u.residues[i].atoms.ids - 1)
             idxMatrix = np.array(idxMatrix)
             selRadius = np.average(radius[idxMatrix], axis=1)
-            sns.kdeplot(data=selRadius)
+            df[molName] = selRadius
+            if not noPlot: sns.kdeplot(data=selRadius)
+        if noPlot:
+            return df
+        plt.legend(legends)
+        plt.xlabel(r'Radius (Angstrom)')
+
+        return fig, ax, df
 
     def compute_asphericity_parameter(self, comFile):
 
@@ -160,8 +172,7 @@ class Featurizer():
 
         mask = np.full(contactMatrix.shape[0], False)
         mask[selIdx] = True
-        G = nx.from_numpy_matrix(contactMatrix[mask][::, mask])
-        l = nx.laplacian_matrix(G)
+        l = laplacian(contactMatrix[mask][::, mask].asfptype())
         while True:
             eigVal, _ = eigs(l.asfptype(), k=10, which='SM')
             eigValReal = np.array([val.real for val in eigVal])
@@ -183,6 +194,16 @@ class Featurizer():
 
         return np.average(lipidNumber)
     
+    def _get_radius_distribution(self, iFrame):
+
+        pos = np.copy(self.u.trajectory[iFrame].positions)
+        com = np.average(pos, axis=0)
+        pos -= com
+        # TODO: Add support for select in certain leaflet.
+        radius = np.linalg.norm(pos, axis=1)
+
+        return radius
+    
     def _get_mol_name_and_type(self):
 
         idx2name = []
@@ -190,7 +211,13 @@ class Featurizer():
         for res in self.u.residues:
             idx2name.append(res.resname)
             idx2type.append(NAME2TYPE[res.resname])
+        idx2name = np.array(idx2name)
         idx2type = np.array(idx2type)
+
+        molCollection = {}
+        allName = set(idx2name)
+        for name in allName:
+            molCollection[name] = np.argwhere(idx2name == name)
 
         molGroup = {}
         allTypes = set(idx2type)
@@ -201,6 +228,7 @@ class Featurizer():
         self.idx2type = np.array(idx2type)
         self.molName = set(self.idx2name)
         self.molType = set(self.idx2type)
+        self.molCollection = molCollection
         self.molGroup = molGroup
     
     @staticmethod
