@@ -1,23 +1,13 @@
-import os
-import sys
-import argparse
-
-
 import numpy as np
-import pandas as pd
 import cupy as cp
 import open3d as o3d
-import mdtraj as md
 import networkx as nx
 import MDAnalysis as mda
 from MDAnalysis.analysis.distances import self_distance_array
 from numba import jit
-from rich.progress import track
 from itertools import combinations
 from math import ceil
 from src.leaflet import Leaflet
-from src.io import read_file, write_file
-from src.toolkit import setEnv
 from src.selection import *
 
 
@@ -51,7 +41,7 @@ class LeafletAssigner():
         self.parallelDegreeCutoff = parallelDegreeCutoff
         self.minLeafletSize = minLeafletSize
         self.chunkSize = chunkSize
-        self.nChunk = round(self.nFrames / chunkSize)
+        self.nChunk = ceil(self.nFrames / chunkSize)
         self.outputPref = outputPref
 
     def run(self):
@@ -68,7 +58,7 @@ class LeafletAssigner():
             self.leafIdx.append(self.assign_leaflet_index(
                     assignment, start, stop))
 
-        self.leafIdx = np.concatenate(self.leafIdx)
+        self.result = self.leafIdx = np.concatenate(self.leafIdx)
 
         return self.leafIdx           
 
@@ -76,7 +66,7 @@ class LeafletAssigner():
         
         nSelectedMol = len(self.headAtomIdx)
         aggGraph = []
-        dist = []
+        #dist = []
         for iFrame in range(start, stop):
             # Assuming that a molecular cannot transfer from one aggregate to another unless two aggregates fuse
             if (iFrame == start) or \
@@ -88,7 +78,7 @@ class LeafletAssigner():
             pairDistances = [self_distance_array(
                 self.trajToAnalysis[iFrame].positions[self.headAtomIdx[agg]])
                 for agg in self.allSets[iFrame]]
-            dist.append(np.concatenate(pairDistances))
+            #dist.append(np.concatenate(pairDistances))
             selectedPairs = np.concatenate(pairDistances) \
                 < self.distanceCutoff
             aggGraph.append(
@@ -179,7 +169,7 @@ class LeafletAssigner():
     @staticmethod
     def _get_mol_type(top):
     
-        return np.array([mol.resname for mol in top.residues])
+        return np.array([mol.resname for mol in top.residues if not mol.resname in RESEXCLUDED])
     
     @staticmethod
     def _get_atom_residue_matrix(traj, selAtom, molType):
@@ -189,7 +179,7 @@ class LeafletAssigner():
             [np.isin(ref, 
                 np.array([atom.index 
                           for atom in res.atoms if atom.name in selAtom[res.resname]]))
-             for res in traj.residues])
+             for res in traj.residues if not res.resname in RESEXCLUDED])
         nAtomPerMol = []
         for molName in molType:
             if len(selAtom[molName]):

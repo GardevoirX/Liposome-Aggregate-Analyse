@@ -60,11 +60,11 @@ def get_selected_residue(top, selAtom):
     selRes = []
     if isinstance(top, Universe):
         for iRes, res in enumerate(top.residues):
-            if len(selAtom[res.resname]) > 0:
+            if not (res.resname in RESEXCLUDED) and len(selAtom[res.resname]) > 0:
                 selRes.append(iRes) 
     else:
         for iRes, res in enumerate(top.top.residues):
-            if len(selAtom[res.name]) > 0:
+            if not (res.name in RESEXCLUDED) and len(selAtom[res.name]) > 0:
                 selRes.append(iRes)    
     
     return selRes
