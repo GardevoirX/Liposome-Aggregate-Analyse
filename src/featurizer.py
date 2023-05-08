@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from numba import jit
+import matplotlib.pyplot as plt
+import seaborn as sns
 import MDAnalysis as mda
 from MDAnalysis.analysis import distances
 from scipy.sparse.linalg import eigs
@@ -13,15 +15,90 @@ from src.define import NAME2TYPE
 
 class Featurizer():
 
-    def __init__(self, topFile, trjFile):
+    def __init__(self, topFile, trjFile, trjInMemorary=False):
 
         self.topFile = topFile
         self.trjFile = trjFile
-        self.u = mda.Universe(topFile, trjFile)
+        self.u = mda.Universe(topFile, trjFile, in_memory=trjInMemorary)
         self.trjLen = len(self.u.trajectory)
         self.nAtoms : int = len(self.u.atoms)
         self.feature = pd.DataFrame()
-        self._get_lipid_type()
+        self._get_mol_name_and_type()
+
+    def select_mol(self, selection:str):
+
+        '''
+        Select molecule according mol name and mol type
+        
+        Args:
+            selection: name or type of a molecular
+        
+        Return:
+            selMolIdx: a list of the index of selected molecule
+        '''
+
+        if selection in self.molName:
+            return np.concatenate(np.argwhere(self.idx2name == selection))
+        elif selection in self.molType:
+            return np.concatenate(np.argwhere(self.idx2type == selection))
+
+    def plot_radius_distribution(self, molName: str, iFrame: int, return_df=False, **kwargs):
+
+        '''
+        Plot the radius distribution of a certain kind of molecule
+        
+        Args:
+            molName: The name of molecule that you are interested in.
+            iFrame: The index of the frame in the trajectory that you want to plot.
+            return_df: Whether to return the dataframe used to plot or not.
+            kwargs: kwargs for matplotlib.pyplot.subplots()
+
+        Return:
+            fig and ax of matplotlib.pyplot
+            If return_df is true, return fig, ax, and df
+        '''
+
+        pos = np.copy(self.u.trajectory[iFrame].positions)
+        com = np.average(pos, axis=0)
+        pos -= com
+        # TODO: Add support for select in certain leaflet.
+        radius = np.linalg.norm(pos, axis=1)
+
+        atomName = set([atom.name for atom in self.u.select_atoms(f'resname {molName}')])
+        selMol = self.u.select_atoms(f'resname {molName}')
+        dfPos = pd.DataFrame()
+        for atom in atomName:
+            selAtom = selMol.select_atoms(f'name {atom}')
+            dfPos[atom] = radius[selAtom.ids - 1]
+        fig, ax = plt.subplots(**kwargs)
+        sns.kdeplot(data=dfPos.sort_index(axis=1), ax=ax)
+        ''' 
+        ax.set_title(f'{mol} N={len(dfPos)}')
+        os.makedirs(f'temp_fig/distribution/Traj-{iTraj}', exist_ok=True)
+        plt.savefig(f'temp_fig/distribution/Traj-{iTraj}/{mol}.png', transparent=False)'''
+
+        if return_df:
+            return fig, ax, dfPos
+        else:
+            return fig, ax
+        
+    def plot_mass_center_radius_distribution(self, iFrame: int, nMolCutoff: int = 0):
+
+        pos = np.copy(self.u.trajectory[iFrame].positions)
+        com = np.average(pos, axis=0)
+        pos -= com
+        radius = np.linalg.norm(pos, axis=1)
+
+        fig, ax = plt.subplots()
+        for molName in self.molName:
+            molIdx = self.select_mol(molName)
+            if len(molIdx) < nMolCutoff: continue
+            idxMatrix = []
+            for i in molIdx:
+                idxMatrix.append(self.u.residues[i].atoms.ids - 1)
+            idxMatrix = np.array(idxMatrix)
+            selRadius = np.average(radius[idxMatrix], axis=1)
+            sns.kdeplot(data=selRadius)
 
     def compute_asphericity_parameter(self, comFile):
 
@@ -32,7 +109,7 @@ class Featurizer():
         for iFrame in track(range(self.trjLen)):
             comPos = com.iloc[iFrame].values[1:] * 10
             atomPos = self.u.trajectory[iFrame]._pos
-            A = self.__compute_rg_tensor(self.nAtoms, atomPos, comPos)
+            A = self._compute_rg_tensor(self.nAtoms, atomPos, comPos)
             l = np.sort(np.linalg.eig(A)[0])[::-1]
             ap = ((l[0] - l[1]) ** 2 + (l[1] - l[2]) ** 2 + (l[2] - l[0]) ** 2) / (2 * (l[0] + l[1] + l[2]) ** 2)
             apCollection = np.append(apCollection, ap)
@@ -106,19 +183,24 @@ class Featurizer():
 
         return np.average(lipidNumber)
     
-    def _get_lipid_type(self):
+    def _get_mol_name_and_type(self):
 
-        molType = []
+        idx2name = []
+        idx2type = []
         for res in self.u.residues:
-            molType.append(NAME2TYPE[res.resname])
-        molType = np.array(molType)
+            idx2name.append(res.resname)
+            idx2type.append(NAME2TYPE[res.resname])
+        idx2type = np.array(idx2type)
 
         molGroup = {}
-        allTypes = set(molType)
+        allTypes = set(idx2type)
         for type_ in allTypes:
-            molGroup[type_] = np.argwhere(molType == type_)
+            molGroup[type_] = np.argwhere(idx2type == type_)
 
-        self.molType = molType
+        self.idx2name = np.array(idx2name)
+        self.idx2type = np.array(idx2type)
+        self.molName = set(self.idx2name)
+        self.molType = set(self.idx2type)
         self.molGroup = molGroup
     
     @staticmethod

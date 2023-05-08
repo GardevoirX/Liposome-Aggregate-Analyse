@@ -112,7 +112,7 @@ class LeafletAssigner():
             normals[toConvert] = -normals[toConvert] 
             normalVector[iFrame - start][self.selRes] = normals
 
-        return normalVector, headPos
+        return normalVector
     
     def _calculate_normal_vector_from_cloud_point(self, position):
 
