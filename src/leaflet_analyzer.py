@@ -68,7 +68,7 @@ class Analyzer():
                 for idx in leafletCollection[iFrame]:
                     atomIdx = np.array(
                             self.headAtomIdx[leafletCollection[iFrame][idx].molIdx])
-                    atomIdx = np.array(atomIdx[~np.isnan(atomIdx)], dtype=int)        
+                    atomIdx = np.array(atomIdx[~np.isnan(atomIdx)], dtype=int)
                     if leafletType == 'membrane':
                         location.append(np.average(traj.xyz[iFrame][atomIdx][::, -1]))
             else:
@@ -112,6 +112,8 @@ class Analyzer():
                             self.unassignedMolIdx[iFrame][results[0]])
                     self.leafletCollection[iFrame][(0, 2)].add_new_mol(
                             self.unassignedMolIdx[iFrame][~results[0]])
+                    self.leafletCollection[iFrame][(0, 1)].get_composition(self.molType)
+                    self.leafletCollection[iFrame][(0, 2)].get_composition(self.molType)
                     self.assignedFrame[iFrame] = True
             elif (start is not None and end is not None) and traj is not None:
                 tempUnassignedMolIdx = []
@@ -128,11 +130,13 @@ class Analyzer():
                                 self.unassignedMolIdx[iFrame][results[iFrame - start]])
                         self.leafletCollection[iFrame][(0, 2)].add_new_mol(
                                 self.unassignedMolIdx[iFrame][~results[iFrame - start]])
+                        self.leafletCollection[iFrame][(0, 1)].get_composition(self.molType)
+                        self.leafletCollection[iFrame][(0, 2)].get_composition(self.molType)
                         self.assignedFrame[iFrame] = True
             else:
                 raise ValueError('You should input either a start end location and a trajectory or a frame index.')
 
-    def __assign_molecules(self, leafletType, leafletLocation, unassignedMolIdx, traj, start):
+    def __assign_molecules(self, leafletType, leafletLocation, unassignedMolIdx, traj, start=0):
 
         # TODO: assign molecules according to its z coordinate or the distance to vesicle center
         assert (len(unassignedMolIdx) == len(traj)) and (len(leafletLocation) == len(traj))
@@ -201,6 +205,6 @@ class Analyzer():
     def __attribute_need_update(self, iFrame, start, boolAry):
 
         if start is None:
-            return boolAry[iFrame]
+            return not boolAry[iFrame]
         else:
-            return boolAry[iFrame + start]
+            return not boolAry[iFrame + start]
