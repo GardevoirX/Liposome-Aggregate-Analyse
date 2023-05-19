@@ -1,5 +1,4 @@
-import pickle
-import warnings
+from typing import Union
 import numpy as np
 import mdtraj as md
 from rich.progress import track
@@ -15,6 +14,7 @@ class Analyzer():
         self.args = read_file(argsFileName)
         self.trajFileName = self.args.trajFile
         self.top = md.load(self.args.topFile)
+        self.molType = self.args.molType
         self.headAtomSelection = fix_not_selected_mol(self.top, \
                 get_atom_selection(self.args.selHeadAtom))
         self.headAtomIdx = get_index_of_selected_atom(self.top, \
@@ -44,36 +44,46 @@ class Analyzer():
 
         if iFrame is not None:
             if not self.locationGot[iFrame]:
-                locations = self.__get_leaflet_location(
+                locations = self._get_leaflet_location(
                         leafletType, [self.leafletCollection[iFrame]], self.traj[iFrame])
-                self.leafletLocation[iFrame] = locations[0]
+                #self.leafletLocation[iFrame] = locations[0]
                 self.locationGot[iFrame] = True
         elif (start is not None and end is not None) and traj is not None:
-            locations = self.__get_leaflet_location(
+            locations = self._get_leaflet_location(
                     leafletType, self.leafletCollection[start:end], traj)
-            for iFrame in range(start, end)[:len(locations)]:
-                if not self.locationGot[iFrame]:
-                    self.leafletLocation[iFrame] = locations[iFrame - start]
+            #for iFrame in range(start, end)[:len(locations)]:
+            #    if not self.locationGot[iFrame]:
+            #        self.leafletLocation[iFrame] = locations[iFrame - start]
         else:
             raise ValueError('You should input either a start end location and a trajectory or a frame index.')
 
 
-    def __get_leaflet_location(self, leafletType, leafletCollection, traj, start=None):
+    def _get_leaflet_location(self, leafletType, leafletCollection, traj, start=None):
 
-        assert len(leafletCollection) == len(traj)
+        #assert len(leafletCollection) == len(traj)
         tempList = []
         for iFrame in range(len(traj)):
-            location = []
+            #location = []
             if self.__attribute_need_update(iFrame, start, self.locationGot):
                 for idx in leafletCollection[iFrame]:
                     atomIdx = np.array(
                             self.headAtomIdx[leafletCollection[iFrame][idx].molIdx])
                     atomIdx = np.array(atomIdx[~np.isnan(atomIdx)], dtype=int)
+                    leafletCollection[iFrame][idx].leafletType = leafletType
                     if leafletType == 'membrane':
-                        location.append(np.average(traj.xyz[iFrame][atomIdx][::, -1]))
+                        leafletCollection[iFrame][idx].location = np.average(traj.xyz[iFrame][atomIdx][::, -1])
+                        #location.append(np.average(traj.xyz[iFrame][atomIdx][::, -1]))
+                    elif leafletType == 'vesicle':
+                        center = np.average(traj.xyz[iFrame][atomIdx], axis=0)
+                        leafletCollection[iFrame][idx].center = center
+                        radius = np.linalg.norm(traj.xyz[iFrame][atomIdx] - center,
+                                                axis=1)
+                        leafletCollection[iFrame][idx].location = np.average(radius)
+                        #location.append(np.average(radius))
             else:
-                location.append(None)
-            tempList.append(location)
+                continue
+                #location.append(None)
+            #tempList.append(location)
 
         return tempList
 
@@ -100,62 +110,71 @@ class Analyzer():
 
         return self.unassignedMolIdx[iFrame]
 
-    def assign_molecules(self, leafletType, iFrame=None, start=None, end=None, traj=None):
+    def assign_molecules(self, iFrame=None, start=None, end=None, traj=None):
 
-        if leafletType == 'membrane':
-            if iFrame is not None:
+        if iFrame is not None:
+            if not self.assignedFrame[iFrame]:
+                results = self._assign_molecules( 
+                        [self.unassignedMolIdx[iFrame]], self.traj[iFrame])
+                '''self.leafletCollection[iFrame][(0, 1)].add_new_mol(
+                        self.unassignedMolIdx[iFrame][results[0]])
+                self.leafletCollection[iFrame][(0, 2)].add_new_mol(
+                        self.unassignedMolIdx[iFrame][~results[0]])
+                self.leafletCollection[iFrame][(0, 1)].get_composition(self.molType)
+                self.leafletCollection[iFrame][(0, 2)].get_composition(self.molType)
+                self.assignedFrame[iFrame] = True'''
+        elif (start is not None and end is not None) and traj is not None:
+            tempUnassignedMolIdx = []
+            #tempLeafletLocation = []
+            for iFrame in range(start, end)[:len(traj)]:
+                tempUnassignedMolIdx.append(self.unassignedMolIdx[iFrame])
+                #tempLeafletLocation.append(self.leafletLocation[iFrame])
+            results = self._assign_molecules(
+                    tempUnassignedMolIdx, traj, start)
+            '''for iFrame in range(start, end)[:len(traj)]:
                 if not self.assignedFrame[iFrame]:
-                    results = self.__assign_molecules(
-                            leafletType, [self.leafletLocation[iFrame]], 
-                            [self.unassignedMolIdx[iFrame]], self.traj[iFrame])
                     self.leafletCollection[iFrame][(0, 1)].add_new_mol(
-                            self.unassignedMolIdx[iFrame][results[0]])
+                            self.unassignedMolIdx[iFrame][results[iFrame - start]])
                     self.leafletCollection[iFrame][(0, 2)].add_new_mol(
-                            self.unassignedMolIdx[iFrame][~results[0]])
+                            self.unassignedMolIdx[iFrame][~results[iFrame - start]])
                     self.leafletCollection[iFrame][(0, 1)].get_composition(self.molType)
                     self.leafletCollection[iFrame][(0, 2)].get_composition(self.molType)
-                    self.assignedFrame[iFrame] = True
-            elif (start is not None and end is not None) and traj is not None:
-                tempUnassignedMolIdx = []
-                tempLeafletLocation = []
-                for iFrame in range(start, end)[:len(traj)]:
-                    tempUnassignedMolIdx.append(self.unassignedMolIdx[iFrame])
-                    tempLeafletLocation.append(self.leafletLocation[iFrame])
-                results = self.__assign_molecules(
-                        leafletType, tempLeafletLocation, tempUnassignedMolIdx, traj, start)
-                for iFrame in range(start, end)[:len(traj)]:
-                    if not self.assignedFrame[iFrame]:
-                        
-                        self.leafletCollection[iFrame][(0, 1)].add_new_mol(
-                                self.unassignedMolIdx[iFrame][results[iFrame - start]])
-                        self.leafletCollection[iFrame][(0, 2)].add_new_mol(
-                                self.unassignedMolIdx[iFrame][~results[iFrame - start]])
-                        self.leafletCollection[iFrame][(0, 1)].get_composition(self.molType)
-                        self.leafletCollection[iFrame][(0, 2)].get_composition(self.molType)
-                        self.assignedFrame[iFrame] = True
-            else:
-                raise ValueError('You should input either a start end location and a trajectory or a frame index.')
+                    self.assignedFrame[iFrame] = True'''
+        else:
+            raise ValueError('You should input either a start end location and a trajectory or a frame index.')
 
-    def __assign_molecules(self, leafletType, leafletLocation, unassignedMolIdx, traj, start=0):
+    def _assign_molecules(self, unassignedMolIdx, traj, start=0):
 
         # TODO: assign molecules according to its z coordinate or the distance to vesicle center
-        assert (len(unassignedMolIdx) == len(traj)) and (len(leafletLocation) == len(traj))
-        tempList = []
-        if leafletType == 'membrane':
-            for iFrame in range(len(traj)):
-                headAtomIdx = []
-                if self.assignedFrame[iFrame + start]:
-                    tempList.append([None])
-                    continue
-                for iRes in unassignedMolIdx[iFrame]:
-                    headAtomIdx.append(self.top.top.residue(iRes).atom(0).index)
-                    #select the head bead of the molecule
+        assert (len(unassignedMolIdx) == len(traj))
+        #tempList = []
+        for iFrame in range(len(traj)):
+            actualIdx = iFrame + start
+            if hasattr(self.leafletCollection[actualIdx][(0, 1)], 'assigned'):
+                continue
+            assert hasattr(self.leafletCollection[actualIdx][(0, 1)], 'location') and hasattr(self.leafletCollection[actualIdx][(0, 2)], 'location'), 'Please call get_leaflet_location() and specify the leaflet type first!'
+            location0 = self.leafletCollection[actualIdx][(0, 1)].location
+            location1 = self.leafletCollection[actualIdx][(0, 2)].location
+            leafletType = self.leafletCollection[actualIdx][(0, 1)].leafletType
+            headAtomIdx = []
+            # select the head bead of the molecule
+            for iRes in unassignedMolIdx[iFrame]:
+                headAtomIdx.append(self.top.top.residue(iRes).atom(0).index)
+            if leafletType == 'membrane':
                 headAtomCoord = traj.xyz[iFrame][headAtomIdx][::, -1]
-                inLeaflet1 = abs(headAtomCoord - leafletLocation[iFrame][0])\
-                        < abs(headAtomCoord - leafletLocation[iFrame][1])
-                tempList.append(inLeaflet1)
+            elif leafletType == 'vesicle':
+                headAtomCoord = np.linalg.norm(traj.xyz[iFrame][headAtomIdx] - self.leafletCollection[actualIdx][(0, 1)].center, axis=1)
+            inLeaflet1 = abs(headAtomCoord - location0)\
+                    < abs(headAtomCoord - location1)
+            self.leafletCollection[actualIdx][(0, 1)].add_new_mol(unassignedMolIdx[iFrame][inLeaflet1])
+            self.leafletCollection[actualIdx][(0, 2)].add_new_mol(unassignedMolIdx[iFrame][~inLeaflet1])
+            self.leafletCollection[actualIdx][(0, 1)].get_composition(self.molType)
+            self.leafletCollection[actualIdx][(0, 2)].get_composition(self.molType)
+            self.leafletCollection[actualIdx][(0, 1)].assigned = True
+            self.leafletCollection[actualIdx][(0, 2)].assigned = True
+            #tempList.append(inLeaflet1)
 
-        return tempList
+        #return tempList
 
     def merge_two_leaflet(self, iFrame, iAgg, location1, location2):
 

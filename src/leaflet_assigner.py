@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import cupy as cp
 import open3d as o3d
@@ -9,14 +10,24 @@ from itertools import combinations
 from math import ceil
 from src.leaflet import Leaflet
 from src.selection import *
+from src.io import write_file
 
 
 class LeafletAssigner():
 
+    '''Assign molecules in a aggregation into several leaflets
+
+    Args:
+    topFile: The topology file of the trajectory you want to analyze
+    trajFile: The trajectory file
+    selHeadAtom:
+    selTailAtom:
+    '''
+
     def __init__(self, topFile, trajFile, \
                  selHeadAtom, selTailAtom, allSetsFile=None, \
                  start=None, stop=None, skip=None, trjSkip=1,\
-                 distanceCutoff=16.6, parallelDegreeCutoff=4, \
+                 distanceCutoff=16.6, parallelDegreeCutoff=14, \
                  minLeafletSize=30, chunkSize=100, outputPref='./'):
 
         self.topFile = topFile
@@ -25,6 +36,8 @@ class LeafletAssigner():
         self.nRes = len(self.top.residues)
         self.traj = self.top.trajectory
         self.trajLen = len(self.traj)
+        self.selHeadAtomCmd = selHeadAtom
+        self.selTailAtomCmd = selTailAtom
         self.selHeadAtom = get_atom_selection(selHeadAtom)
         self.selTailAtom = get_atom_selection(selTailAtom)
         self._prepare_info(self.top, self.selHeadAtom, self.selTailAtom)
@@ -43,6 +56,7 @@ class LeafletAssigner():
         self.chunkSize = chunkSize
         self.nChunk = ceil(self.nFrames / chunkSize)
         self.outputPref = outputPref
+        os.makedirs(self.outputPref, exist_ok=True)
 
     def run(self):
 
@@ -59,6 +73,7 @@ class LeafletAssigner():
                     assignment, start, stop))
 
         self.result = self.leafIdx = np.concatenate(self.leafIdx)
+        self._write_results()
 
         return self.leafIdx           
 
@@ -274,3 +289,19 @@ class LeafletAssigner():
         
         return np.sum(v1 * v2, axis=1)
     
+    def _write_results(self):
+
+        write_file(self.leafIdx, os.path.join(self.outputPref, 'leaflet.pickle'))
+        args = self.Arg()
+        args.trajFile = self.trajFile
+        args.topFile = self.topFile
+        args.selHeadAtom = self.selHeadAtomCmd
+        args.stop = self.stop
+        args.start = self.start
+        args.molType = self.molType
+        write_file(args, os.path.join(self.outputPref, 'leaflet_args.pickle'))
+
+
+    class Arg():
+
+        pass
