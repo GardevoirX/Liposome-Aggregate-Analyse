@@ -508,5 +508,5 @@ NAME2UNSAT = {
     'DPTAP': [0, 0],
     'DOTAP': [1, 1],
     'DITAP': [1, 1],
-    'CHOL': []
+    'CHOL': [0]
 }

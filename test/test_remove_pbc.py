@@ -15,7 +15,7 @@ class Test_pbc_remover():
         ndxFile = 'test/test_case/agg_set'
         outputFile = 'test/test_case/test_output.gro'
         u = mda.Universe(groFile, groFile)
-        remover = PBCRemover(groFile, groFile, ndxFile, 'dodecahedron', outputFile)
+        remover = PBCRemover(groFile, groFile, ndxFile, outputFile)
         remover.run()
         uRemoved = mda.Universe(outputFile, outputFile)
 
@@ -35,7 +35,7 @@ class Test_pbc_remover():
         for i in np.linspace(0., 10., 100):
             bias = torch.tensor([i, 0., 0.])
             original_position = position
-            changed_position = remover.move_to_unit_cell(
+            changed_position = remover._move_to_unit_cell(
                     original_position + bias, boxXYZ, a, b, c)
             self.dist_compare(
                     2, original_position.numpy(), 
@@ -44,7 +44,7 @@ class Test_pbc_remover():
         for i in np.linspace(0., 10., 100):
             bias = torch.tensor([0., 0., i])
             original_position = position
-            changed_position = remover.move_to_unit_cell(
+            changed_position = remover._move_to_unit_cell(
                     original_position + bias, boxXYZ, a, b, c)
             self.dist_compare(
                     2, original_position.numpy(), 

@@ -1,0 +1,10 @@
+.history
+.ipynb_checkpoints
+*/__pycache__
+*.ipynb
+test.xtc
+*.pickle
+temp_fig/
+.vscode/
+.pytest_cache/
+.__pycache__/

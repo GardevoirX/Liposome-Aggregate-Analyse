@@ -25,6 +25,14 @@ def fix_not_selected_mol(top, selAtom):
 
     return selAtom
 
+def assign_head_atom_for_not_selected_mol(top, notSelectedRes):
+
+    headIdx = []
+    for iRes in notSelectedRes:
+        headIdx.append(top.residues[iRes].atoms[0].id)
+
+    return headIdx
+
 def get_index_of_selected_atom(top, atomSelection, fillUnselected=False):
 
     # Only the first atom in the selection command 

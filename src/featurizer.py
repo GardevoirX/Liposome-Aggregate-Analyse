@@ -42,6 +42,42 @@ class Featurizer():
             return np.concatenate(np.argwhere(self.idx2name == selection))
         elif selection in self.molType:
             return np.concatenate(np.argwhere(self.idx2type == selection))
+        
+    def plot_polar_distribution(self, iFrame, selIdx, returnCoord=False):
+    
+        if len(selIdx.shape) > 1: selIdx = np.concatenate(selIdx)
+        pos = np.copy(self.u.trajectory[iFrame].positions)
+        com = np.average(pos, axis=0)
+        pos -= com
+        r, theta, phi = self._cart_to_sph(pos[selIdx, 0], pos[selIdx, 1], pos[selIdx, 2])
+        if returnCoord:
+            return r, theta, phi
+        mirror = self._cube_mirror((np.pi, 2 * np.pi), np.vstack([theta, phi]).T)
+        fig, ax = plt.subplots()
+        sns.histplot(x=mirror[::, 0], y=mirror[::, 1], ax=ax, weights=1/np.abs(np.sin(mirror[::, 0])), bins=(50, 50))
+        ax.set_xlabel(r'$\theta$')
+        ax.set_ylabel(r'$\phi$')
+        ax.set_ylim((-np.pi, np.pi))
+        ax.set_xlim((0, np.pi))
+
+    def _cart_to_sph(self, x, y, z):
+  
+        r = np.sqrt(x**2 + y**2 + z**2)
+        theta = np.arctan2(np.sqrt(x**2 + y**2), z)
+        phi = np.arctan2(y, x)
+
+        return (r, theta, phi)
+
+    def _cube_mirror(self, length, point):
+
+        length = np.array(length)
+        point = np.array(point)
+        directions = np.array([(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)])
+        mirrors = [point]
+        for direct in directions:
+            mirrors.append(point + direct * length)
+
+        return np.concatenate(mirrors)
 
     def plot_radius_distribution(self, molName: str, iFrame: int, returnDF=False, **kwargs):
 
