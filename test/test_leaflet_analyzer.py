@@ -45,5 +45,5 @@ def test_calculate_correlation(get_global_data):
     vesAnalyzer = get_global_data('vesAnalyzer')
     atomIdx = vesAnalyzer.top.select_atoms('resname CHOL and name ROH').ids
     resIdx = vesAnalyzer.top.select_atoms('resname CHOL and name ROH').resids
-    vesAnalyzer.calculate_correlation(0, 1, 50, atomIdx, resIdx)
+    print(vesAnalyzer.calculate_correlation(0, 1, 50, atomIdx, resIdx))
     [0.04107462251528567]

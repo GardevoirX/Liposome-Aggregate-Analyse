@@ -2,11 +2,12 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
+from sklearn import neighbors
 from rich.progress import track
 from src.define import *
 from src.io import read_file, write_file
 from src.selection import *
-from src.utils.dist import cal_distance_matrix, init_cluster_centers
+from src.utils.dist import cal_distance_matrix, select_center_based_on_kcenter
 
 class Analyzer():
 
@@ -22,6 +23,10 @@ class Analyzer():
                 get_atom_selection(self.args.selHeadAtom))
         self.headAtomIdx = get_index_of_selected_atom(self.top, \
                 self.headAtomSelection)
+        self.tailAtomSelection = fix_not_selected_mol(self.top, \
+                get_atom_selection(self.args.selTailAtom))
+        self.tailAtomIdx = get_index_of_selected_atom(self.top, \
+                self.tailAtomSelection)
         self.totalResNum = len(self.headAtomIdx)
         self.notSolventResNum = np.sum(~np.isnan(self.headAtomIdx))
         self.selectedRes = np.arange(self.totalResNum)[
@@ -34,10 +39,12 @@ class Analyzer():
                 self.headAtomIdx[self.selectedRes], dtype=int)
         self.headAtomIdx[self.notSelectedRes] = assign_head_atom_for_not_selected_mol(
                 self.top, self.notSelectedRes)
+        self.headAtomIdx = np.array(self.headAtomIdx, dtype=int)
+        self.tailAtomIdx_noNan = np.array(
+                self.tailAtomIdx[self.selectedRes], dtype=int)
         self.locationGot = np.full(int(self.args.stop) - int(self.args.start), False)
         self.assignedFrame = np.full(int(self.args.stop) - int(self.args.start), False)
         self.unassignedMolIdx = {}
-        self.leafletLocation = {}
 
     def get_leaflet_location(self, leafletType, iFrame=None, start=None, end=None, traj=None):
 
@@ -99,52 +106,71 @@ class Analyzer():
 
         return self.unassignedMolIdx[iFrame]
 
-    def assign_molecules(self, iFrame=None, start=None, end=None, traj=None):
+    def assign_molecules(self, iFrame):
 
-        if iFrame is not None:
-            if not self.assignedFrame[iFrame]:
-                self._assign_molecules( 
-                        [self.unassignedMolIdx[iFrame]], self.traj[iFrame:iFrame+1], iFrame)
-        elif (start is not None and end is not None) and traj is not None:
-            tempUnassignedMolIdx = []
-            for iFrame in range(start, end)[:len(traj)]:
-                tempUnassignedMolIdx.append(self.unassignedMolIdx[iFrame])
-            self._assign_molecules(
-                    tempUnassignedMolIdx, traj, start)
-        else:
-            raise ValueError('You should input either a start end location and a trajectory or a frame index.')
+        if not self.assignedFrame[iFrame]:
+            self._assign_molecules( 
+                    self.unassignedMolIdx[iFrame], iFrame)
 
-    def _assign_molecules(self, unassignedMolIdx, traj, start=0):
+    def _assign_molecules(self, unassignedMolIdx, iFrame):
 
         # TODO: assign molecules according to its z coordinate or the distance to vesicle center
-        assert (len(unassignedMolIdx) == len(traj))
-        for iFrame in range(len(traj)):
-            actualIdx = iFrame + start
-            if hasattr(self.leafletCollection[actualIdx][(0, 1)], 'assigned'):
-                continue
-            assert hasattr(self.leafletCollection[actualIdx][(0, 1)], 'location') and hasattr(self.leafletCollection[actualIdx][(0, 2)], 'location'), 'Please call get_leaflet_location() and specify the leaflet type first!'
-            location0 = self.leafletCollection[actualIdx][(0, 1)].location
-            location1 = self.leafletCollection[actualIdx][(0, 2)].location
-            leafletType = self.leafletCollection[actualIdx][(0, 1)].leafletType
-            headAtomIdx = []
-            # select the head bead of the molecule
-            for iRes in unassignedMolIdx[iFrame]:
-                headAtomIdx.append(self.top.residues[iRes].atoms[0].index)
-            if leafletType == 'membrane':
-                headAtomCoord = traj[iFrame].positions[headAtomIdx][::, -1]
-            elif leafletType == 'vesicle':
-                headAtomCoord = np.linalg.norm(traj[iFrame].positions[headAtomIdx] - self.leafletCollection[actualIdx][(0, 1)].center, axis=1)
-            inLeaflet1 = abs(headAtomCoord - location0)\
-                    < abs(headAtomCoord - location1)
-            self.leafletCollection[actualIdx][(0, 1)].add_new_mol(unassignedMolIdx[iFrame][inLeaflet1])
-            self.leafletCollection[actualIdx][(0, 2)].add_new_mol(unassignedMolIdx[iFrame][~inLeaflet1])
-            self.leafletCollection[actualIdx][(0, 1)].get_composition(self.molType)
-            self.leafletCollection[actualIdx][(0, 2)].get_composition(self.molType)
-            self.leafletCollection[actualIdx][(0, 1)].assigned = True
-            self.leafletCollection[actualIdx][(0, 2)].assigned = True
-            #tempList.append(inLeaflet1)
+        actualIdx = iFrame
+        if hasattr(self.leafletCollection[actualIdx][(0, 1)], 'assigned'):
+            return
+        if len(self.leafletCollection[actualIdx].keys()) == 2 and \
+            hasattr(self.leafletCollection[actualIdx][(0, 1)], 'leafletType'):
+            self._assign_based_on_leaflet_location(actualIdx, unassignedMolIdx)
+        else:
+            self._assign_based_on_neighbour(actualIdx, unassignedMolIdx)
 
-        #return tempList
+    def _assign_based_on_leaflet_location(self, actualIdx, unassignedMolIdx):
+
+        assert hasattr(self.leafletCollection[actualIdx][(0, 1)], 'location') and \
+                hasattr(self.leafletCollection[actualIdx][(0, 2)], 'location'), \
+                'Please call get_leaflet_location() and specify the leaflet type first!'
+        location0 = self.leafletCollection[actualIdx][(0, 1)].location
+        location1 = self.leafletCollection[actualIdx][(0, 2)].location
+        leafletType = self.leafletCollection[actualIdx][(0, 1)].leafletType
+        headAtomIdx = []
+        # select the head bead of the molecule
+        for iRes in unassignedMolIdx:
+            headAtomIdx.append(self.top.residues[iRes].atoms[0].index)
+        if leafletType == 'membrane':
+            headAtomCoord = self.traj[actualIdx] \
+                                .positions[headAtomIdx][::, -1]
+        elif leafletType == 'vesicle':
+            headAtomCoord = \
+                    np.linalg.norm(self.traj[actualIdx].positions[headAtomIdx] -\
+                    self.leafletCollection[actualIdx][(0, 1)].center, axis=1)
+        inLeaflet1 = abs(headAtomCoord - location0)\
+                < abs(headAtomCoord - location1)
+        self.leafletCollection[actualIdx][(0, 1)] \
+            .add_new_mol(unassignedMolIdx[inLeaflet1])
+        self.leafletCollection[actualIdx][(0, 2)] \
+            .add_new_mol(unassignedMolIdx[~inLeaflet1])
+        self.leafletCollection[actualIdx][(0, 1)].get_composition(self.molType)
+        self.leafletCollection[actualIdx][(0, 2)].get_composition(self.molType)
+        self.leafletCollection[actualIdx][(0, 1)].assigned = True
+        self.leafletCollection[actualIdx][(0, 2)].assigned = True
+
+    def _assign_based_on_neighbour(self, actualIdx, unassignedMolIdx):
+
+        assigned = np.concatenate([self.leafletCollection[actualIdx][key].molIdx \
+                                  for key in self.leafletCollection[actualIdx].keys()])
+        X = self.traj[actualIdx]._pos[np.array(self.headAtomIdx[assigned], dtype=int)]
+        y = np.concatenate([np.full(len(self.leafletCollection[actualIdx][key].molIdx), i) \
+                            for i, key in enumerate(self.leafletCollection[actualIdx].keys())])
+        clf = neighbors.KNeighborsClassifier(n_neighbors=5)
+        clf.fit(X, y)
+        result = clf.predict(self.traj[actualIdx]._pos[
+                np.array(self.headAtomIdx[unassignedMolIdx], dtype=int)])
+        # update
+        for i, key in enumerate(self.leafletCollection[actualIdx].keys()):
+            self.leafletCollection[actualIdx][key].add_new_mol(unassignedMolIdx[result == i])
+            self.leafletCollection[actualIdx][key].get_composition(self.molType)
+            self.leafletCollection[actualIdx][key].assigned = True
+
 
     def calculate_flip_flop_times(self, selIdx:np.array, startFrame:int):
         """
@@ -177,15 +203,16 @@ class Analyzer():
     def calculate_correlation(self, startFrame: int, endFrame: int, nClusters: int, atomIdx: list, resIdx: list):
 
         corr = []
-        clusterCenters = init_cluster_centers(nClusters)
         df = pd.DataFrame()
         df['atom_ids'] = atomIdx
         df['res_ids'] = resIdx
         for iFrame in track(range(startFrame, endFrame)):
-            r = (self.leafletCollection[iFrame][(0, 1)].location + self.leafletCollection[iFrame][(0, 2)].location) / 2
-            clusterPos = clusterCenters * r
+            clusterCenters = select_center_based_on_kcenter(nClusters, 
+                    self.traj[iFrame]._pos[self.tailAtomIdx_noNan])
+            '''r = (self.leafletCollection[iFrame][(0, 1)].location + self.leafletCollection[iFrame][(0, 2)].location) / 2
+            clusterPos = clusterCenters * r'''
             positions = np.array(self.traj[iFrame]._pos[df['atom_ids']], dtype=float)
-            df['labels'] = self._assign_molecule_to_cluster(positions, np.array(clusterPos, dtype=float))
+            df['labels'] = self._assign_molecule_to_cluster(positions, np.array(clusterCenters, dtype=float))
             corr.append(self._cal_corrcoef(iFrame, df))
 
         return corr

@@ -17,19 +17,24 @@ def init_cluster_centers(nClusters: int):
     thetas = np.linspace(0, np.pi, 500)
     phis = np.linspace(0, 2 * np.pi, 500)[:-1]
     points = np.array([sph_to_cart(1, theta, phi) for theta in thetas for phi in phis])
+    selPoints = select_center_based_on_kcenter(nClusters, points)
+        
+    return selPoints
+
+def select_center_based_on_kcenter(nClusters: int, points:np.ndarray):
+
     dists = np.zeros((nClusters, len(points)))
     iClusters = 0
     selPoints = [points[0]]
     pointPool = np.full(len(points), True)
-    for iClusters in track(range(nClusters - 1), description='Initializing cluster centers...'):
+    for iClusters in range(nClusters - 1):
         delPoints = ~np.alltrue(selPoints[-1] == points, axis=1)
         pointPool &= delPoints
         dists[iClusters] = np.linalg.norm(points - selPoints[-1], axis=1)
         dists[iClusters, ~pointPool] = np.nan
-        selPointsIdx = np.nanargmax(np.sum(dists, axis=0))
+        selPointsIdx = np.nanargmax(np.min(dists, axis=0))
         selPoints.append(points[selPointsIdx])
-        iClusters += 1
-        
+
     return np.array(selPoints)
 
 def sph_to_cart(r, theta, phi):
