@@ -146,6 +146,9 @@ LIPIDDEF = {
         'PIPI',
         'PAPI',
         'PUPI',
+    ],
+
+    'PIPs':[
         'DPP1',
         'PVP1',
         'POP1',
@@ -156,8 +159,8 @@ LIPIDDEF = {
         'POP3',
     ],
 
-    # Glycerols
-    'AG':[
+    # Diacylglycerol
+    'DAG':[
         'PVDG',
         'PODG',
         'PIDG',
@@ -206,12 +209,14 @@ LIPIDDEF = {
     ],
 
     # monosialotetrahexosylganglioside & monosialodihexosylganglioside 
-    'GM':[
+    'GM1':[
         'DPG1',
         'DBG1',
         'DXG1',
         'PNG1',
-        'XNG1',
+        'XNG1',],
+
+    'GM3':[
         'DPG3',
         'DBG3',
         'DXG3',
