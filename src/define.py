@@ -515,3 +515,20 @@ NAME2UNSAT = {
     'DITAP': [1, 1],
     'CHOL': [0]
 }
+
+LINKER_TYPE = {
+    'Sterols': ['Sterols'],
+    'Sphingolipids': ['SM', 'CER', 'GS', 'GM1', 'GM3'],
+    'Glycerolipids': ['PC', 'PE', 'PS', 'PG', 'PA', 'PI', 'PIPs', 'DAG', 'LPC', 'DG']
+}
+
+HEAD_TYPE = {
+    'Sterols': ['Sterols'],
+    'PC': ['PC'],
+    'PE': ['PE'],
+    'SM': ['SM'],
+    'Glyco': ['GS', 'GM1', 'GM3'],
+    'PS': ['PS'],
+    'PI': ['PI'],
+    'PIPs': ['PIPs']
+}
