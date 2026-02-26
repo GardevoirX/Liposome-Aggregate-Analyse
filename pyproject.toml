@@ -61,6 +61,7 @@ docstring-code-format = true
 # pytest
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["test"]
 addopts = "-v --tb=short"
 markers = [
