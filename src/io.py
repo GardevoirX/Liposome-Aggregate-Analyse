@@ -1,53 +1,56 @@
-import numpy as np
-import pandas as pd
 import pickle
 
-class XVGReader():
-    
+import numpy as np
+import pandas as pd
+
+
+class XVGReader:
     def __init__(self, fileName):
-        
+
         self.fileName = fileName
         self.data = pd.DataFrame()
-            
+
     def read(self):
-        
-        with open(self.fileName, 'r') as rfl:
+
+        with open(self.fileName) as rfl:
             content = rfl.readlines()
         self.legend = {}
         tempData = {}
         for line in content:
-            if line[0] == '#':
+            if line[0] == "#":
                 continue
-            elif line[0] == '@':
+            elif line[0] == "@":
                 split = line.split()
-                if split[1] == 'title':
+                if split[1] == "title":
                     self.title = line.split('"')[1]
-                elif split[1] == 'xaxis':
+                elif split[1] == "xaxis":
                     self.xaxis = line.split('"')[1]
                     tempData[0] = []
-                elif split[1] == 'yaxis':
+                elif split[1] == "yaxis":
                     self.yaxis = line.split('"')[1]
-                elif len(split) > 2 and split[2] == 'legend':
+                elif len(split) > 2 and split[2] == "legend":
                     self.legend[split[1]] = line.split('"')[1]
                     tempData[len(tempData.keys())] = []
             else:
                 for i, data in enumerate(line.split()):
                     tempData[i].append(data)
-        
+
         self.data[self.xaxis] = np.array(tempData[0], dtype=float)
         for i, key in enumerate(self.legend.keys()):
-            self.data[self.legend[key]] = np.array(tempData[i+1], dtype=float)
-            
+            self.data[self.legend[key]] = np.array(tempData[i + 1], dtype=float)
+
         return self.data
 
+
 def write_file(data, fileName):
-    
-    with open(fileName, 'wb') as wfl:
+
+    with open(fileName, "wb") as wfl:
         pickle.dump(data, wfl)
-    
+
     return
 
+
 def read_file(fileName):
-    
-    with open(fileName, 'rb') as rfl:
+
+    with open(fileName, "rb") as rfl:
         return pickle.load(rfl)

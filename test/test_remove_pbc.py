@@ -1,76 +1,87 @@
-from src.remove_pbc import PBCRemover
+"""Tests for the PBC (Periodic Boundary Condition) Remover.
+
+These tests verify that ``PBCRemover`` correctly translates atomic
+coordinates so that aggregate atoms are contiguous in Cartesian space.
+Test data lives in ``test/test_case/``.
+"""
+
+import MDAnalysis as mda
+import numpy as np
 import pytest
 import torch
-import numpy as np
-import MDAnalysis as mda
-from rich.progress import track
 from MDAnalysis.analysis import distances
+from rich.progress import track
 
-class Test_pbc_remover():
+from src.remove_pbc import PBCRemover
 
-    @pytest.fixture()
-    def test_running(self):
 
-        groFile = 'test/test_case/dry.gro'
-        ndxFile = 'test/test_case/agg_set'
-        outputFile = 'test/test_case/test_output.gro'
-        u = mda.Universe(groFile, groFile)
-        remover = PBCRemover(groFile, groFile, ndxFile, outputFile)
+class TestPbcRemover:
+    """Functional tests for ``PBCRemover``."""
+
+    @pytest.fixture(scope="class")
+    def pbc_setup(self):
+        """Run PBCRemover on the small test-case and return both universes."""
+        gro_file = "test/test_case/dry.gro"
+        ndx_file = "test/test_case/agg_set"
+        output_file = "test/test_case/test_output.gro"
+        u = mda.Universe(gro_file, gro_file)
+        remover = PBCRemover(gro_file, gro_file, ndx_file, output_file)
         remover.run()
-        uRemoved = mda.Universe(outputFile, outputFile)
+        u_removed = mda.Universe(output_file, output_file)
+        return u, u_removed, remover
 
-        return u, uRemoved, remover
-
-    def test_move_to_unit_cell_dist_fidelity(self, test_running):
-
-        u, _, remover = test_running
-        a = torch.tensor([1., 0., 0.])
-        b = torch.tensor([0., 1., 0.])
+    def test_move_to_unit_cell_dist_fidelity(self, pbc_setup):
+        _u, _, remover = pbc_setup
+        a = torch.tensor([1.0, 0.0, 0.0])
+        b = torch.tensor([0.0, 1.0, 0.0])
         c = torch.tensor([0.5, 0.5, 0.7071])
         boxXYZ = torch.tensor([a[0], b[1], c[2]])
-        dimensions = np.array([1., 1., 1., 60., 60., 90.])
-        position = torch.tensor([[0., 0., 0.],
-                                 boxXYZ / 2])
-        
-        for i in np.linspace(0., 10., 100):
-            bias = torch.tensor([i, 0., 0.])
+        dimensions = np.array([1.0, 1.0, 1.0, 60.0, 60.0, 90.0])
+        position = torch.tensor([[0.0, 0.0, 0.0], boxXYZ / 2])
+
+        for i in np.linspace(0.0, 10.0, 100):
+            bias = torch.tensor([i, 0.0, 0.0])
             original_position = position
             changed_position = remover._move_to_unit_cell(
-                    original_position + bias, boxXYZ, a, b, c)
+                original_position + bias, boxXYZ, a, b, c
+            )
             self.dist_compare(
-                    2, original_position.numpy(), 
-                    changed_position.numpy(), dimensions)
-            
-        for i in np.linspace(0., 10., 100):
-            bias = torch.tensor([0., 0., i])
+                2, original_position.numpy(), changed_position.numpy(), dimensions
+            )
+
+        for i in np.linspace(0.0, 10.0, 100):
+            bias = torch.tensor([0.0, 0.0, i])
             original_position = position
             changed_position = remover._move_to_unit_cell(
-                    original_position + bias, boxXYZ, a, b, c)
+                original_position + bias, boxXYZ, a, b, c
+            )
             self.dist_compare(
-                    2, original_position.numpy(), 
-                    changed_position.numpy(), dimensions)
+                2, original_position.numpy(), changed_position.numpy(), dimensions
+            )
 
-    def test_atom_sequence(self, test_running):
+    def test_atom_sequence(self, pbc_setup):
+        u, u_removed, _ = pbc_setup
+        assert len(u.atoms) == len(u_removed.atoms)
+        for i_atom in range(len(u.atoms)):
+            assert u.atoms[i_atom].name == u_removed.atoms[i_atom].name
+            assert u.atoms[i_atom].resname == u_removed.atoms[i_atom].resname
 
-        u, uRemoved, _ = test_running
-        assert len(u.atoms) == len(uRemoved.atoms)
-        for iAtom in range(len(u.atoms)):
-            assert u.atoms[iAtom].name == uRemoved.atoms[iAtom].name
-            assert u.atoms[iAtom].resname == uRemoved.atoms[iAtom].resname
+    def test_atom_pair_dist_fidelity(self, pbc_setup):
+        u, u_removed, _ = pbc_setup
+        self.dist_compare(
+            len(u.atoms), u.atoms.positions, u_removed.atoms.positions, u.dimensions
+        )
 
-    def test_atom_pair_dist_fidelity(self, test_running):
+    def dist_compare(self, n_atoms, pos1, pos2, box):
 
-        u, uRemoved, _ = test_running
-        self.dist_compare(len(u.atoms), u.atoms.positions, uRemoved.atoms.positions, u.dimensions)
-    
-    def dist_compare(self, nAtoms, pos1, pos2, box):
+        for i_atom in track(
+            range(min(n_atoms - 1, 4)), description="Testing atom pair distance..."
+        ):
+            original_dist = distances.distance_array(
+                pos1[i_atom], pos1[i_atom + 1 :], box=box
+            )
+            output_dist = distances.distance_array(
+                pos2[i_atom], pos2[i_atom + 1 :], box=box
+            )
 
-        for iAtom in track(range(min(nAtoms - 1, 4)), description='Testing atom pair distance...'):
-            originalDist = distances.distance_array(
-                    pos1[iAtom], pos1[iAtom + 1:], box=box)
-            outputDist = distances.distance_array(
-                    pos2[iAtom], pos2[iAtom + 1:], box=box)
-
-            assert np.sum(abs(originalDist - outputDist) > 1e-2) == 0
-                
-
+            assert np.sum(abs(original_dist - output_dist) > 1e-2) == 0
