@@ -1,7 +1,5 @@
 """Tests for the IO module (``src.io``)."""
 
-from __future__ import annotations
-
 import os
 import tempfile
 

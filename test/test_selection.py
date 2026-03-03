@@ -1,7 +1,5 @@
 """Tests for selection parsing utilities (``src.selection``)."""
 
-from __future__ import annotations
-
 import pytest
 
 from src.selection import get_atom_selection

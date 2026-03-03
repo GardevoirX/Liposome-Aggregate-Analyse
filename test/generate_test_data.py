@@ -22,8 +22,6 @@ Override the output directory::
     uv run python test/generate_test_data.py --output-dir /tmp/test_fixtures
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import shutil

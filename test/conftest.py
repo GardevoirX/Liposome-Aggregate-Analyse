@@ -28,8 +28,6 @@ Include slow tests::
     uv run pytest --run-slow
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
@@ -48,7 +46,7 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "test" / "example" / "analyzer"
 # ---------------------------------------------------------------------------
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
+def pytest_addoption(parser):
     parser.addoption(
         "--data-dir",
         action="store",
@@ -74,9 +72,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 # ---------------------------------------------------------------------------
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config, items):
     """Auto-skip tests based on markers and runtime environment."""
 
     # --- slow ---
@@ -95,7 +91,7 @@ def pytest_collection_modifyitems(
                 item.add_marker(skip_gpu)
 
 
-def _check_gpu() -> bool:
+def _check_gpu():
     """Return True if a CUDA device is reachable."""
     try:
         import cupy
@@ -112,13 +108,13 @@ def _check_gpu() -> bool:
 
 
 @pytest.fixture(scope="session")
-def project_root() -> Path:
+def project_root():
     """Absolute path to the project root directory."""
     return PROJECT_ROOT
 
 
 @pytest.fixture(scope="session")
-def data_dir(request: pytest.FixtureRequest) -> Path:
+def data_dir(request):
     """Resolve the directory that holds the leaflet pickle fixtures.
 
     Resolution order:
@@ -130,31 +126,31 @@ def data_dir(request: pytest.FixtureRequest) -> Path:
     if custom is not None:
         d = Path(custom)
         if not d.exists():
-            pytest.fail(f"Specified data directory does not exist: {d}")
+            pytest.fail("Specified data directory does not exist: {}".format(d))
         return d
     return DEFAULT_DATA_DIR
 
 
 @pytest.fixture(scope="session")
-def leaflet_pickle(data_dir: Path) -> str:
+def leaflet_pickle(data_dir):
     """Path to ``vesicle_leaflet.pickle``."""
     p = data_dir / "vesicle_leaflet.pickle"
     if not p.exists():
-        pytest.skip(f"Leaflet pickle not found: {p}")
+        pytest.skip("Leaflet pickle not found: {}".format(p))
     return str(p)
 
 
 @pytest.fixture(scope="session")
-def args_pickle(data_dir: Path) -> str:
+def args_pickle(data_dir):
     """Path to ``vesicle_leaflet_args.pickle``."""
     p = data_dir / "vesicle_leaflet_args.pickle"
     if not p.exists():
-        pytest.skip(f"Args pickle not found: {p}")
+        pytest.skip("Args pickle not found: {}".format(p))
     return str(p)
 
 
 @pytest.fixture(scope="session")
-def data_pickle(data_dir: Path) -> str | None:
+def data_pickle(data_dir):
     """Path to ``vesicle_data.pickle``, or *None* if unavailable.
 
     When the user supplies a custom ``--data-dir`` that was produced on a

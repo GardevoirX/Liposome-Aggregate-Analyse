@@ -1,7 +1,5 @@
 """Tests for toolkit utilities (``src.toolkit``)."""
 
-from __future__ import annotations
-
 import os
 
 from src.toolkit import setEnv

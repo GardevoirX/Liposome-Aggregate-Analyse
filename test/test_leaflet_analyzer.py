@@ -20,8 +20,6 @@ This means the same test file works with both the 2-frame local example and
 a full server-side dataset.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pytest
 
@@ -35,13 +33,13 @@ from src.leaflet_analyzer import Analyzer
 
 
 @pytest.fixture(scope="module")
-def analyzer(leaflet_pickle: str, args_pickle: str) -> Analyzer:
+def analyzer(leaflet_pickle, args_pickle):
     """Shared ``Analyzer`` instance (created once per module)."""
     return Analyzer(leaflet_pickle, args_pickle)
 
 
 @pytest.fixture(scope="module")
-def vesicle_data(data_pickle: str | None) -> dict | None:
+def vesicle_data(data_pickle):
     """Expected assertion values loaded from ``vesicle_data.pickle``.
 
     Returns *None* when the file is absent so that value-comparison tests
@@ -53,7 +51,7 @@ def vesicle_data(data_pickle: str | None) -> dict | None:
 
 
 @pytest.fixture(scope="module")
-def pipeline(analyzer: Analyzer) -> dict:
+def pipeline(analyzer):
     """Run the full analysis pipeline on **frame 0** and cache results.
 
     Calling order inside the ``Analyzer`` matters — ``get_leaflet_location``
@@ -80,12 +78,12 @@ def pipeline(analyzer: Analyzer) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _expect(vesicle_data: dict | None, key: str):
+def _expect(vesicle_data, key):
     """Return ``vesicle_data[key]`` or *skip* when unavailable."""
     if vesicle_data is None:
         pytest.skip("No expected-values fixture (vesicle_data.pickle)")
     if key not in vesicle_data:
-        pytest.skip(f"Key '{key}' not in vesicle_data (regenerate fixtures)")
+        pytest.skip("Key '{}' not in vesicle_data (regenerate fixtures)".format(key))
     return vesicle_data[key]
 
 
